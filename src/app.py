@@ -29,20 +29,22 @@ setup_admin(app)
 
 # Handle/serialize errors like a JSON object
 
+
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
-# generate sitemap with all your endpoints
 
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
 
-@app.route('/user', methods=['GET'])
+
+@app.route('/users', methods=['GET'])
 def get_users():
     users = db.session.execute(db.select(User)).scalars().all()
     return jsonify([user.serialize() for user in users]), 200
+
 
 @app.route('/user/<int:id>', methods=['GET'])
 def get_user_by_id(id):
@@ -54,6 +56,7 @@ def get_user_by_id(id):
         return jsonify({"message": "User not found"}), 404
 
     return jsonify(user.serialize()), 200
+
 
 @app.route('/user', methods=["POST"])
 def create_user():
@@ -96,6 +99,7 @@ def create_user():
         "user": user.serialize()
     }), 201
 
+
 @app.route('/user/<int:id>', methods=['DELETE'])
 def delete_user_by_id(id):
     user = db.session.execute(
@@ -117,8 +121,117 @@ def delete_user_by_id(id):
     }), 201
 
 
+def get_user_by_id(user_id):
+    return User.query.get(user_id)
 
-@app.route('/people', methods=["POST"])
+
+@app.route('/favorite/planet/<int:user_id>/<int:planet_id>', methods=['POST'])
+def add_favorite_planet(user_id, planet_id):
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    planet = Planets.query.get(planet_id)
+    if not planet:
+        return jsonify({"message": "Planet not found"}), 404
+
+    if planet in user.favorite_planets:
+        return jsonify({"message": "Planet already in favorites"}), 400
+
+    user.favorite_planets.append(planet)
+    db.session.commit()
+    return jsonify({"message": "Planet added to favorites"}), 201
+
+
+@app.route('/favorite/planet/<int:user_id>/<int:planet_id>', methods=['DELETE'])
+def delete_favorite_planet(user_id, planet_id):
+
+    user = get_user_by_id(user_id)
+
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    planet = Planets.query.get(planet_id)
+    if not planet:
+        return jsonify({"message": "Planet not found"}), 404
+
+    if planet not in user.favorite_planets:
+        return jsonify({"message": "Planet is not in user's favorites"}), 400
+
+    try:
+        user.favorite_planets.remove(planet)
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+    return jsonify({
+        "message": "Planet delete succefully"
+    }), 201
+
+
+@app.route('/favorite/character/<int:user_id>/<int:character_id>', methods=['POST'])
+def add_favorite_character(user_id, character_id):
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    character = People.query.get(character_id)
+    if not character:
+        return jsonify({"message": "Character not found"}), 404
+
+    if character in user.favorite_people:
+        return jsonify({"message": "Character already in favorites"}), 400
+
+    user.favorite_people.append(character)
+    db.session.commit()
+    return jsonify({"message": "Character added to favorites"}), 201
+
+
+@app.route('/favorite/character/<int:user_id>/<int:planet_id>', methods=['DELETE'])
+def delete_favorite_character(user_id, planet_id):
+
+    user = get_user_by_id(user_id)
+
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    character = People.query.get(planet_id)
+    if not character:
+        return jsonify({"message": "Character not found"}), 404
+
+    if character not in user.favorite_people:
+        return jsonify({"message": "Character is not in user's favorites"}), 400
+
+    try:
+        user.favorite_people.remove(character)
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+    return jsonify({
+        "message": "Character delete succefully"
+    }), 201
+
+
+@app.route('/favorite/<int:user_id>', methods=['GET'])
+def get_user_favorites(user_id):
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    favorite_planets = [planet.serialize() for planet in user.favorite_planets]
+    favorite_people = [person.serialize() for person in user.favorite_people]
+
+    return jsonify({
+        "user_id": user.id,
+        "favorite_planets": favorite_planets,
+        "favorite_people": favorite_people
+    }), 200
+
+
+@app.route('/character', methods=["POST"])
 def create_character():
     data = request.json
 
@@ -147,6 +260,7 @@ def create_character():
         "character": people.serialize()
     }), 201
 
+
 @app.route('/character/<int:id>', methods=['GET'])
 def get_character_by_id(id):
     character = db.session.execute(
@@ -158,6 +272,64 @@ def get_character_by_id(id):
 
     return jsonify(character.serialize()), 200
 
+
+@app.route('/people', methods=['GET'])
+def get_people():
+    people = db.session.execute(db.select(People)).scalars().all()
+    return jsonify([character.serialize() for character in people]), 200
+
+
+@app.route('/character/<int:id>', methods=['DELETE'])
+def delete_character_by_id(id):
+    character = db.session.execute(
+        db.select(People).filter_by(id=id)
+    ).scalar_one_or_none()
+
+    if character is None:
+        return jsonify({"message": "Character not found"}), 404
+
+    try:
+        db.session.delete(character)
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+    return jsonify({
+        "message": "Character delete succefully"
+    }), 201
+
+@app.route('/character/<int:character_id>', methods=["PUT"])
+def update_character(character_id):
+    data = request.json
+
+    if not data.get("name_of_people"):
+        return jsonify({"message": "Field 'name_of_people' is required"}), 400
+
+    character = People.query.get(character_id)
+    if not character:
+        return jsonify({"message": "character not found"}), 404
+
+    existing_character = db.session.execute(
+        db.select(People).filter_by(name_of_people=data["name_of_people"])
+    ).scalar_one_or_none()
+
+    if existing_character and existing_character.id != character.id:
+        return jsonify({"message": "Another planet with this name already exists"}), 400
+
+    character.name_of_people = data["name_of_people"]
+
+    try:
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+
+    return jsonify({
+        "charater": character.serialize(),
+        "message": "character updated successfully"
+    }), 200
 
 
 @app.route('/planet', methods=["POST"])
@@ -188,6 +360,77 @@ def create_planet():
     return jsonify({
         "planet": planet.serialize()
     }), 201
+
+
+@app.route('/planet/<int:id>', methods=['GET'])
+def get_planet_by_id(id):
+    planet = db.session.execute(
+        db.select(Planets).filter_by(id=id)
+    ).scalar_one_or_none()
+
+    if planet is None:
+        return jsonify({"message": "character not found"}), 404
+
+    return jsonify(planet.serialize()), 200
+
+
+@app.route('/planets', methods=['GET'])
+def get_planets():
+    planets = db.session.execute(db.select(Planets)).scalars().all()
+    return jsonify([planet.serialize() for planet in planets]), 200
+
+
+@app.route('/planet/<int:id>', methods=['DELETE'])
+def delete_planet_by_id(id):
+    planet = db.session.execute(
+        db.select(Planets).filter_by(id=id)
+    ).scalar_one_or_none()
+
+    if planet is None:
+        return jsonify({"message": "Planet not found"}), 404
+
+    try:
+        db.session.delete(planet)
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+    return jsonify({
+        "message": "Planet delete succefully"
+    }), 201
+
+@app.route('/planet/<int:planet_id>', methods=["PUT"])
+def update_planet(planet_id):
+    data = request.json
+
+    if not data.get("name_of_planets"):
+        return jsonify({"message": "Field 'name_of_planets' is required"}), 400
+
+    planet = Planets.query.get(planet_id)
+    if not planet:
+        return jsonify({"message": "Planet not found"}), 404
+
+    existing_planet = db.session.execute(
+        db.select(Planets).filter_by(name_of_planets=data["name_of_planets"])
+    ).scalar_one_or_none()
+
+    if existing_planet and existing_planet.id != planet.id:
+        return jsonify({"message": "Another planet with this name already exists"}), 400
+
+    planet.name_of_planets = data["name_of_planets"]
+
+    try:
+        db.session.commit()
+    except Exception as error:
+        print(error)
+        db.session.rollback()
+        return jsonify({"message": "Internal server error"}), 500
+
+    return jsonify({
+        "planet": planet.serialize(),
+        "message": "Planet updated successfully"
+    }), 200
 
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3000))

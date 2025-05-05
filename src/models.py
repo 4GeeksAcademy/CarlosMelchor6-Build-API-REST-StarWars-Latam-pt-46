@@ -22,7 +22,7 @@ user_people_favorites = Table(
     "user_people_favorites",
     db.Model.metadata,
     Column("user_id", ForeignKey("user.id"), primary_key=True),
-    Column("person_id", ForeignKey("people.id"), primary_key=True)
+    Column("character_id", ForeignKey("people.id"), primary_key=True)
 )
 
 
@@ -75,7 +75,7 @@ class Planets(db.Model):
 
 class People(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
-    name_of_people: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name_of_people: Mapped[str] = mapped_column(String(120), nullable=False)
 
     def serialize(self):
         return {
